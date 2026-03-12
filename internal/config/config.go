@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/ini.v1"
 )
@@ -22,6 +23,14 @@ type LogConfig struct {
 	APIAuthType string   // "bearer", "basic", or "" (none)
 	APIAuthToken string  // bearer token, or basic password
 	APIAuthUser  string  // basic auth username
+
+	// FOCAS2 fields — used by focas-logger, ignored by cklogd.
+	// If FOCASHost is empty, FOCAS polling is disabled for this log.
+	FOCASHost    string        // focas_host: controller IP address
+	FOCASPort    int           // focas_port: default 8193
+	MachineIP    string        // machine_ip: IP written into log lines (defaults to FOCASHost)
+	MachineName  string        // machine_name: identifier written into log lines (defaults to uppercase section name)
+	PollInterval time.Duration // poll_interval: how often to query the controller (default 2s)
 }
 
 type Config struct {
@@ -124,6 +133,33 @@ func Load(path string, cfg *Config) error {
 					return fmt.Errorf("[%s] duplicate column name %q", colSec, col)
 				}
 				seen[col] = true
+			}
+		}
+
+		// FOCAS2 (optional)
+		if key, err := sec.GetKey("focas_host"); err == nil {
+			lc.FOCASHost = strings.TrimSpace(key.Value())
+		}
+		if lc.FOCASHost != "" {
+			lc.FOCASPort = 8193
+			if key, err := sec.GetKey("focas_port"); err == nil {
+				if n, err := strconv.Atoi(strings.TrimSpace(key.Value())); err == nil && n > 0 {
+					lc.FOCASPort = n
+				}
+			}
+			lc.MachineIP = lc.FOCASHost
+			if key, err := sec.GetKey("machine_ip"); err == nil {
+				lc.MachineIP = strings.TrimSpace(key.Value())
+			}
+			lc.MachineName = strings.ToUpper(name)
+			if key, err := sec.GetKey("machine_name"); err == nil {
+				lc.MachineName = strings.TrimSpace(key.Value())
+			}
+			lc.PollInterval = 2 * time.Second
+			if key, err := sec.GetKey("poll_interval"); err == nil {
+				if d, err := time.ParseDuration(strings.TrimSpace(key.Value())); err == nil && d > 0 {
+					lc.PollInterval = d
+				}
 			}
 		}
 

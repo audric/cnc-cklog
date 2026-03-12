@@ -8,6 +8,9 @@ Daemon that watches configured CSV log files and ingests new lines into monthly-
 
 ```bash
 go build -o cklogd ./cmd/cklogd
+
+# focas-logger requires CGo and the Fanuc FOCAS2 SDK (see Fanuc section below)
+CGO_ENABLED=1 go build -o focas-logger ./cmd/focas-logger
 ```
 
 ## Configuration
@@ -41,6 +44,29 @@ max_fields = 3
 2 = axis
 3 = value
 ```
+
+### FOCAS2 polling (optional, per log)
+
+For Fanuc controllers (e.g. Robocut C800iB with 31i-WB), `focas-logger` polls the machine via the FOCAS2 ethernet API and writes `START`/`END` events directly to the log file. `cklogd` then ingests those lines normally — no difference on the ingestion side.
+
+Add these keys to any log section to enable FOCAS polling:
+
+```ini
+[cnc1]
+file          = cnclogs/cnc1.log
+focas_host    = 10.16.30.100   ; controller IP — enables FOCAS for this section
+focas_port    = 8193           ; FOCAS2 port (default: 8193)
+machine_ip    = 10.16.30.100   ; IP written into CSV lines (default: focas_host)
+machine_name  = CNC1           ; identifier written into CSV lines (default: uppercase section name)
+poll_interval = 2s             ; how often to query the controller (default: 2s)
+```
+
+`focas-logger` detects state transitions on the controller:
+
+- Machine goes idle → running: writes `START, CNC1, 10.16.30.100, 2026-03-12 19:07`
+- Machine goes running → idle: writes `END, CNC1, 10.16.30.100, 2026-03-12 19:08`
+
+If the connection drops, `focas-logger` reconnects automatically after 10 seconds. On reconnect, the first poll establishes the current state silently (no spurious event if the machine was already running).
 
 ### API posting (optional, per log)
 
@@ -92,7 +118,12 @@ HTTPS works out of the box using the system certificate store.
 ```bash
 ./cklogd                          # uses cklogd.ini in current directory
 ./cklogd -config /etc/cklogd.ini
+
+./focas-logger                    # same config file as cklogd
+./focas-logger -config /etc/cklogd/cklogd.ini
 ```
+
+`focas-logger` and `cklogd` run independently and can be started in any order. They share only the log files on disk.
 
 ## Install as a systemd service
 
@@ -112,16 +143,24 @@ sudo cp cklogd.ini /etc/cklogd/cklogd.ini
 # Edit /etc/cklogd/cklogd.ini: set dbdir = /var/lib/cklogd and file paths
 ```
 
-**3. Install and enable the service:**
+**3. Install and enable the services:**
 
 ```bash
+sudo cp cklogd /usr/local/bin/cklogd
+sudo cp focas-logger /usr/local/bin/focas-logger   # if using FOCAS
+
 sudo cp cklogd.service /etc/systemd/system/
+sudo cp focas-logger.service /etc/systemd/system/  # if using FOCAS
 sudo systemctl daemon-reload
+
 sudo systemctl enable cklogd
 sudo systemctl start cklogd
+
+sudo systemctl enable focas-logger    # if using FOCAS
+sudo systemctl start focas-logger
 ```
 
-**4. Manage the service:**
+**4. Manage the services:**
 
 ```bash
 sudo systemctl status cklogd
@@ -129,6 +168,9 @@ sudo systemctl stop cklogd
 sudo systemctl restart cklogd
 sudo journalctl -u cklogd -f          # follow live logs
 sudo journalctl -u cklogd --since today
+
+sudo systemctl status focas-logger
+sudo journalctl -u focas-logger -f
 ```
 
 ## Expose `cnclogs` via Samba (for CNC machines)
@@ -171,7 +213,9 @@ sudo systemctl restart smbd
 
 CNC machines connect to `\\<server>\cnclogs` with the `cncuser` credentials. `cklogd` reads the files via group membership.
 
-## Heidenhain TNC640: writing to the log from a DIN/ISO program
+## Writing to the log from a CNC program
+
+### Heidenhain TNC640 (HEROS)
 
 ### Log format
 
@@ -258,6 +302,68 @@ The `/NET/cnclogs/` path above corresponds to a mounted Samba network drive. To 
 Network drives configured this way survive reboots. If the mount does not persist, contact your MTB — some machine configurations restrict network settings to the **MOD → Machine settings → Network** menu.
 
 > **Tip:** Before running programs, test write access from the TNC file manager by creating a file manually in `/NET/cnclogs/`.
+
+### Fanuc 31i-WB (Robocut C800iB and similar)
+
+The Fanuc 31i-WB does not support direct file writes to a network share from within an NC program. Instead, use `focas-logger` as a companion process — it polls the controller over ethernet via the FOCAS2 API and writes the same CSV lines that `cklogd` expects.
+
+#### Requirements
+
+- Fanuc FOCAS2 SDK from Fanuc (not publicly distributed): `fwlib32.h` + `libfwlib32.so`
+- Place the SDK files in `/usr/local/include/focas/` and `/usr/local/lib/`
+- The controller's embedded ethernet must be enabled and reachable from the server
+
+#### Build
+
+```bash
+CGO_ENABLED=1 go build -o focas-logger ./cmd/focas-logger
+```
+
+If you only have the 32-bit SDK (older installations):
+
+```bash
+CGO_ENABLED=1 GOARCH=386 go build -o focas-logger ./cmd/focas-logger
+```
+
+#### Configuration
+
+Enable FOCAS polling for a log section by adding `focas_host`:
+
+```ini
+[cnc1]
+file          = cnclogs/cnc1.log
+max_fields    = 4
+focas_host    = 10.16.30.100
+machine_name  = CNC1
+
+[cnc1.columns]
+1 = event
+2 = program
+3 = ip
+4 = timestamp
+```
+
+#### How it works
+
+`focas-logger` polls the controller every 2 seconds (configurable). When it detects a state change it appends a line to the log file:
+
+```
+START, CNC1, 10.16.30.100, 2026-03-12 19:07
+END,   CNC1, 10.16.30.100, 2026-03-12 19:08
+```
+
+`cklogd` picks up these lines via `fsnotify` exactly as it would for a Heidenhain-written log. No changes to `cklogd` configuration are required.
+
+#### Configuring the controller network
+
+On the Fanuc 31i-WB:
+
+1. Go to **SYSTEM** → **Embedded Ethernet** (or **FOCAS2 Ethernet**).
+2. Set the controller IP address, subnet mask, and gateway.
+3. Confirm the FOCAS port is `8193` (default).
+4. Ensure the server running `focas-logger` is on the same LAN segment or routed subnet.
+
+> **Tip:** Test reachability with `ping <controller-ip>` from the server before starting `focas-logger`.
 
 ## Querying
 

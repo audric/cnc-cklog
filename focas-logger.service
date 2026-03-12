@@ -1,0 +1,20 @@
+[Unit]
+Description=Fanuc FOCAS2 CNC event logger
+After=network.target
+
+[Service]
+Type=simple
+User=cklogd
+ExecStart=/usr/local/bin/focas-logger -config /etc/cklogd/cklogd.ini
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/cnclogs
+ReadOnlyPaths=/etc/cklogd
+
+[Install]
+WantedBy=multi-user.target
