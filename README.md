@@ -1,6 +1,6 @@
 # cnc-cklog
 
-Daemon that watches configured CSV log files and ingests new lines into monthly-rotated SQLite databases. Each log file has its own schema and its own set of databases.
+Daemon that watches configured CSV log files and ingests new lines into monthly-rotated SQLite databases, with optional async HTTP POST to a remote API. Each log file has its own schema and its own set of databases.
 
 `cnc1.log` → `cnc1_2026_03.db`, `cnc1_2026_04.db`, …
 
