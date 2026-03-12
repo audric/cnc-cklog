@@ -134,11 +134,14 @@ HTTPS works out of the box using the system certificate store.
 ./cklogd                          # uses cklogd.ini in current directory
 ./cklogd -config /etc/cklogd.ini
 
+./mazak-logger                    # same config file as cklogd
+./mazak-logger -config /etc/cklogd/cklogd.ini
+
 ./focas-logger                    # same config file as cklogd
 ./focas-logger -config /etc/cklogd/cklogd.ini
 ```
 
-`focas-logger` and `cklogd` run independently and can be started in any order. They share only the log files on disk.
+All three processes are independent and can be started in any order. They share only the log files on disk.
 
 ## Install as a systemd service
 
@@ -150,10 +153,13 @@ sudo mkdir -p /var/log/cnclogs /var/lib/cklogd /etc/cklogd
 sudo chown cklogd:cklogd /var/log/cnclogs /var/lib/cklogd
 ```
 
-**2. Install the binary and config:**
+**2. Install binaries and config:**
 
 ```bash
 sudo cp cklogd /usr/local/bin/cklogd
+sudo cp mazak-logger /usr/local/bin/mazak-logger   # if using Mazak
+sudo cp focas-logger /usr/local/bin/focas-logger   # if using Fanuc FOCAS2
+
 sudo cp cklogd.ini /etc/cklogd/cklogd.ini
 # Edit /etc/cklogd/cklogd.ini: set dbdir = /var/lib/cklogd and file paths
 ```
@@ -161,28 +167,26 @@ sudo cp cklogd.ini /etc/cklogd/cklogd.ini
 **3. Install and enable the services:**
 
 ```bash
-sudo cp cklogd /usr/local/bin/cklogd
-sudo cp focas-logger /usr/local/bin/focas-logger   # if using FOCAS
-
 sudo cp cklogd.service /etc/systemd/system/
-sudo cp focas-logger.service /etc/systemd/system/  # if using FOCAS
+sudo cp mazak-logger.service /etc/systemd/system/  # if using Mazak
+sudo cp focas-logger.service /etc/systemd/system/  # if using Fanuc FOCAS2
 sudo systemctl daemon-reload
 
-sudo systemctl enable cklogd
-sudo systemctl start cklogd
-
-sudo systemctl enable focas-logger    # if using FOCAS
-sudo systemctl start focas-logger
+sudo systemctl enable cklogd && sudo systemctl start cklogd
+sudo systemctl enable mazak-logger && sudo systemctl start mazak-logger   # if using Mazak
+sudo systemctl enable focas-logger && sudo systemctl start focas-logger   # if using Fanuc FOCAS2
 ```
 
 **4. Manage the services:**
 
 ```bash
 sudo systemctl status cklogd
-sudo systemctl stop cklogd
 sudo systemctl restart cklogd
-sudo journalctl -u cklogd -f          # follow live logs
+sudo journalctl -u cklogd -f
 sudo journalctl -u cklogd --since today
+
+sudo systemctl status mazak-logger
+sudo journalctl -u mazak-logger -f
 
 sudo systemctl status focas-logger
 sudo journalctl -u focas-logger -f
@@ -232,7 +236,7 @@ CNC machines connect to `\\<server>\cnclogs` with the `cncuser` credentials. `ck
 
 ### Heidenhain TNC640 (HEROS)
 
-### Log format
+#### Log format
 
 Each line written to `cnc1.log` should be CSV with four fields matching the configured columns:
 
@@ -241,7 +245,7 @@ START, CNC1, 10.16.30.100, 2026-03-12 19:07
 END,   CNC1, 10.16.30.100, 2026-03-12 19:08
 ```
 
-### DIN/ISO program
+#### DIN/ISO program
 
 Use `FN 16: F-PRINT` (prefixed with `%` in DIN/ISO context) to write to a file. Call it at the top and bottom of the program:
 
@@ -272,7 +276,7 @@ G00 ...
 | `%S1`…`%S9` | string Q-parameters `QS1`…`QS9` |
 | `%Q1`… | numeric Q-parameters |
 
-### Reusable subprogram
+#### Reusable subprogram
 
 To avoid repeating the FN 16 call in every program, create a subprogram `LOGWRITE.I`:
 
@@ -296,7 +300,7 @@ Call it from any main program:
 % CALL PGM /TNC/nc_prog/LOGWRITE.I
 ```
 
-### Configuring the remote path on HEROS TNC640
+#### Configuring the remote path on HEROS TNC640
 
 The `/NET/cnclogs/` path above corresponds to a mounted Samba network drive. To configure it:
 
