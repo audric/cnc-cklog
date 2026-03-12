@@ -8,6 +8,7 @@ Daemon that watches configured CSV log files and ingests new lines into monthly-
 
 ```bash
 go build -o cklogd ./cmd/cklogd
+go build -o mazak-logger ./cmd/mazak-logger
 
 # focas-logger requires CGo and the Fanuc FOCAS2 SDK (see Fanuc section below)
 CGO_ENABLED=1 go build -o focas-logger ./cmd/focas-logger
@@ -44,6 +45,20 @@ max_fields = 3
 2 = axis
 3 = value
 ```
+
+### Mazak DPRNT forwarding (optional, per log)
+
+For Mazak controllers running Windows 2000 / Mazatrol Matrix Nexus, `mazak-logger` reads DPRNT output from a Windows SMB share mounted on the server and forwards lines to the log file watched by `cklogd`.
+
+```ini
+[cnc1]
+file          = cnclogs/cnc1.log
+dprnt_path    = /mnt/mazak/dprnt   ; mounted SMB path — directory or single file
+dprnt_glob    = PRNT*.DAT          ; file pattern for directory mode (default: PRNT*.DAT)
+poll_interval = 2s                 ; polling interval (default: 2s)
+```
+
+See the [Mazak section](#mazak-matrix-nexus-200-windows-2000) below for full setup instructions.
 
 ### FOCAS2 polling (optional, per log)
 
@@ -302,6 +317,104 @@ The `/NET/cnclogs/` path above corresponds to a mounted Samba network drive. To 
 Network drives configured this way survive reboots. If the mount does not persist, contact your MTB — some machine configurations restrict network settings to the **MOD → Machine settings → Network** menu.
 
 > **Tip:** Before running programs, test write access from the TNC file manager by creating a file manually in `/NET/cnclogs/`.
+
+### Mazak Matrix Nexus 200 (Windows 2000)
+
+The Mazak controller runs Windows 2000 with SMB file sharing. DPRNT output is written to a local directory on the controller and read by `mazak-logger` via a CIFS mount.
+
+> **Note:** inotify does not work on CIFS mounts — `mazak-logger` uses timed polling only.
+
+#### 1. Configure DPRNT on the Mazak
+
+Set these parameters on the controller to direct DPRNT output to a local directory:
+
+| Parameter | Value | Meaning |
+|---|---|---|
+| `DPR14` | `3` or `4` | Output to COM3/COM4 (USB-RS232) — or set to local file if supported |
+| `DPR16` | `1` | Enable DPRNT file output |
+| I/O channel (param 20) | `4` | Write to memory card / local disk |
+
+DPRNT creates sequential files: `PRNT001.DAT`, `PRNT002.DAT`, … in the configured output directory (e.g. `C:\DPRNT\`).
+
+#### 2. NC program
+
+Write DPRNT lines that produce the CSV format `cklogd` expects:
+
+```gcode
+; At program start:
+POPEN
+DPRNT[START,*CNC1,*10.16.30.100,*#3011[4]-#3012[2]-#3013[2]*#3014[2]:#3015[2]]
+PCLOS
+
+; ... machining ...
+
+; At program end:
+POPEN
+DPRNT[END,*CNC1,*10.16.30.100,*#3011[4]-#3012[2]-#3013[2]*#3014[2]:#3015[2]]
+PCLOS
+```
+
+System variables: `#3011`=year, `#3012`=month, `#3013`=day, `#3014`=hour, `#3015`=minute.
+
+Output line: `START, CNC1, 10.16.30.100, 2026-03-13 19:07`
+
+#### 3. Share the DPRNT directory on Windows 2000
+
+On the Mazak (Windows 2000):
+1. Right-click `C:\DPRNT` → **Sharing** → **Share this folder**
+2. Share name: `dprnt` — set permissions to allow read access from the server
+
+#### 4. Mount the share on the Linux server
+
+```bash
+sudo apt install cifs-utils
+sudo mkdir -p /mnt/mazak/dprnt
+sudo mount -t cifs //192.168.1.20/dprnt /mnt/mazak/dprnt \
+    -o username=mazakuser,password=secret,vers=1.0,uid=cklogd,gid=cklogd,ro
+```
+
+> `vers=1.0` is required for Windows 2000 SMB1. Add to `/etc/fstab` for persistence:
+> ```
+> //192.168.1.20/dprnt /mnt/mazak/dprnt cifs username=mazakuser,password=secret,vers=1.0,uid=cklogd,gid=cklogd,ro 0 0
+> ```
+
+#### 5. Configure cklogd.ini
+
+```ini
+[cnc1]
+file          = cnclogs/cnc1.log
+max_fields    = 4
+dprnt_path    = /mnt/mazak/dprnt
+dprnt_glob    = PRNT*.DAT
+
+[cnc1.columns]
+1 = event
+2 = program
+3 = ip
+4 = timestamp
+```
+
+#### 6. Build and run
+
+```bash
+go build -o mazak-logger ./cmd/mazak-logger
+./mazak-logger -config cklogd.ini
+```
+
+#### How it works
+
+`mazak-logger` polls the mounted directory every 2 seconds. Existing files at startup are skipped. When a new `PRNT*.DAT` file appears, its lines are read and appended to the log file. `cklogd` picks them up via `fsnotify` as normal.
+
+#### Install as a systemd service
+
+```bash
+sudo cp mazak-logger /usr/local/bin/mazak-logger
+sudo cp mazak-logger.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable mazak-logger
+sudo systemctl start mazak-logger
+sudo journalctl -u mazak-logger -f
+```
 
 ### Fanuc 31i-WB (Robocut C800iB and similar)
 

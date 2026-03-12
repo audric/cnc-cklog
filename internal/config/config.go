@@ -31,6 +31,14 @@ type LogConfig struct {
 	MachineIP    string        // machine_ip: IP written into log lines (defaults to FOCASHost)
 	MachineName  string        // machine_name: identifier written into log lines (defaults to uppercase section name)
 	PollInterval time.Duration // poll_interval: how often to query the controller (default 2s)
+
+	// Mazak DPRNT fields — used by mazak-logger, ignored by cklogd.
+	// If DPRNTPath is empty, Mazak DPRNT forwarding is disabled for this log.
+	// DPRNTPath may point to:
+	//   - a directory: mazak-logger processes new PRNT*.DAT files as they appear
+	//   - a single file: mazak-logger tails it for new lines
+	DPRNTPath string // dprnt_path: local path to mounted SMB share (file or directory)
+	DPRNTGlob string // dprnt_glob: filename pattern when DPRNTPath is a directory (default: PRNT*.DAT)
 }
 
 type Config struct {
@@ -159,6 +167,19 @@ func Load(path string, cfg *Config) error {
 			if key, err := sec.GetKey("poll_interval"); err == nil {
 				if d, err := time.ParseDuration(strings.TrimSpace(key.Value())); err == nil && d > 0 {
 					lc.PollInterval = d
+				}
+			}
+		}
+
+		// Mazak DPRNT (optional)
+		if key, err := sec.GetKey("dprnt_path"); err == nil {
+			lc.DPRNTPath = strings.TrimSpace(key.Value())
+		}
+		if lc.DPRNTPath != "" {
+			lc.DPRNTGlob = "PRNT*.DAT"
+			if key, err := sec.GetKey("dprnt_glob"); err == nil {
+				if g := strings.TrimSpace(key.Value()); g != "" {
+					lc.DPRNTGlob = g
 				}
 			}
 		}
