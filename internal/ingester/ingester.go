@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/audric/heros-cklog/internal/config"
-	"github.com/audric/heros-cklog/internal/poster"
-	"github.com/audric/heros-cklog/internal/reader"
-	"github.com/audric/heros-cklog/internal/store"
-	"github.com/audric/heros-cklog/internal/watcher"
+	"github.com/audric/cnc-cklog/internal/config"
+	"github.com/audric/cnc-cklog/internal/poster"
+	"github.com/audric/cnc-cklog/internal/reader"
+	"github.com/audric/cnc-cklog/internal/store"
+	"github.com/audric/cnc-cklog/internal/watcher"
 )
 
 var dbNameRe = regexp.MustCompile(`^(.+)_(\d{4})_(\d{2})\.db$`)

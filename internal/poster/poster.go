@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/audric/heros-cklog/internal/config"
-	"github.com/audric/heros-cklog/internal/store"
+	"github.com/audric/cnc-cklog/internal/config"
+	"github.com/audric/cnc-cklog/internal/store"
 )
 
 const (

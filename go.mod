@@ -1,4 +1,4 @@
-module github.com/audric/heros-cklog
+module github.com/audric/cnc-cklog
 
 go 1.22
 

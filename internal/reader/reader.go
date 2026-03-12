@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/audric/heros-cklog/internal/store"
+	"github.com/audric/cnc-cklog/internal/store"
 )
 
 const flushSize = 200

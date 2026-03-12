@@ -8,8 +8,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/audric/heros-cklog/internal/config"
-	"github.com/audric/heros-cklog/internal/ingester"
+	"github.com/audric/cnc-cklog/internal/config"
+	"github.com/audric/cnc-cklog/internal/ingester"
 )
 
 func main() {
