@@ -1,4 +1,4 @@
-# cklogd
+# cnc-cklog
 
 Daemon that watches configured CSV log files and ingests new lines into monthly-rotated SQLite databases. Each log file has its own schema and its own set of databases.
 
