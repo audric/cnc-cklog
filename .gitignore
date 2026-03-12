@@ -1,0 +1,19 @@
+# compiled binary
+cklogd
+
+# SQLite databases and WAL sidecars
+*.db
+*.db-wal
+*.db-shm
+
+# log files
+*.log
+
+# editor lock files
+.#*
+
+# Claude Code
+.claude/
+
+# Go build cache
+/vendor/
