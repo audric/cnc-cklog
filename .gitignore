@@ -1,5 +1,5 @@
 # compiled binary
-cklogd
+/cklogd
 
 # SQLite databases and WAL sidecars
 *.db
