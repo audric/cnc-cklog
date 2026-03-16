@@ -41,11 +41,12 @@ max_fields = 4
 |-----|---------|---------|
 | `api_url`, `api_auth_type`, `api_auth_token`, `api_auth_user` | `cklogd` | POST each batch to an HTTP endpoint |
 | `focas_host`, `focas_port`, `machine_ip`, `machine_name`, `poll_interval` | `focas-logger` | Poll a Fanuc controller via FOCAS2 |
-| `dprnt_path`, `dprnt_glob`, `poll_interval` | `mazak-logger` | Read DPRNT output from a mounted Mazak share |
+| `dprnt_path`, `dprnt_glob` | `mazak-logger` | Read DPRNT output from a mounted Mazak share |
 
 **Rules:**
 - `[cklogd]` is reserved for global settings.
 - Every `[name]` section requires `file`.
+- `max_fields` controls how many CSV fields are stored; defaults to 10. Set it to match your column count to avoid extra empty columns.
 - `[name.columns]` names columns by 1-based index; unspecified positions default to `Column1`, `Column2`, etc.
 - Column names must match `[a-zA-Z_][a-zA-Z0-9_]*`.
 
@@ -57,14 +58,18 @@ max_fields = 4
 ./focas-logger -config cklogd.ini   # Fanuc 31i-WB
 ```
 
+`mazak-logger` and `focas-logger` accept a `-debug` flag for verbose logging.
+
 All three processes are independent and can be started in any order.
 
 ## Querying
 
+Every `log_lines` row contains: `id`, `filename`, `line` (raw CSV), the configured columns, and `ingested_at`. A `file_offsets` table tracks byte offsets for crash recovery.
+
 ```sql
 SELECT event, program, ip, timestamp FROM log_lines WHERE event = 'START';
 SELECT event, COUNT(*) FROM log_lines GROUP BY event;
-SELECT * FROM log_lines WHERE program = 'PROGRAM1';
+SELECT * FROM log_lines WHERE ingested_at > '2026-03-01';
 ```
 
 ## Behavior

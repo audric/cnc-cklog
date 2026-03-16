@@ -63,18 +63,29 @@ Add to `/etc/fstab` for persistence:
 
 ## 5. Configure cklogd.ini
 
+`mazak-logger` supports two modes depending on whether `dprnt_path` points to a directory or a file:
+
+- **Directory mode** (default): picks up new files matching `dprnt_glob`. Files present at startup are skipped.
+- **File mode**: tails a single file. Seeks to end on startup and reads new content each poll. Resets on truncation or inode change.
+
 ```ini
 [cnc1]
 file          = cnclogs/cnc1.log
 max_fields    = 4
-dprnt_path    = /mnt/mazak/dprnt
-dprnt_glob    = PRNT*.DAT
+dprnt_path    = /mnt/mazak/dprnt        ; directory → directory mode
+dprnt_glob    = PRNT*.DAT               ; file pattern (default: PRNT*.DAT)
 
 [cnc1.columns]
 1 = event
 2 = program
 3 = ip
 4 = timestamp
+```
+
+For file mode, point `dprnt_path` directly at the file:
+
+```ini
+dprnt_path    = /mnt/mazak/dprnt/output.dat
 ```
 
 ## 6. Build and run
@@ -84,7 +95,7 @@ go build -o mazak-logger ./cmd/mazak-logger
 ./mazak-logger -config cklogd.ini
 ```
 
-`mazak-logger` polls the mounted directory every 2 seconds. Files present at startup are skipped. When a new `PRNT*.DAT` file appears its lines are appended to the log file and picked up by `cklogd`.
+`mazak-logger` polls every 2 seconds. Use `-debug` for verbose logging.
 
 ## 7. Install as a systemd service
 
